@@ -134,6 +134,7 @@ textarea{width:100%;min-height:200px;padding:12px;border:1px solid var(--line);b
 .oc.warn{background:var(--warn-bg);color:var(--warn-ink)}
 .oc.err{background:var(--red-soft);color:var(--red-ink)}
 .file{display:none}
+.rate{width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);text-align:right;font-variant-numeric:tabular-nums}
 
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);box-shadow:var(--shadow);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px))}
 .tabs .in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
@@ -224,8 +225,17 @@ pre.msg{white-space:pre-wrap;word-break:break-word;background:var(--surface2);bo
       <button class="btn danger" id="btn-wipe">Erase everything</button>
     </div>
     <p class="note">The example is the notebook's 8:30 draw from two operators, with a drawn result, so you can see winners and payouts. Erase removes it.</p>
-    <h3>Payout rates used</h3>
-    <div class="tablewrap"><table><tr><th>Bet</th><th>Pays per $10</th></tr><tr><td>Number</td><td>$280</td></tr><tr><td>Mega, gold ball drawn</td><td>$700 extra</td></tr><tr><td>Monsta, red ball drawn</td><td>$300 extra</td></tr><tr><td>Monsta, red with gold</td><td>$1,000 extra</td></tr></table></div>
+    <h3>Payout rates</h3>
+    <p>What a winning play pays, per $10 bet. Change these to what you actually pay. Every winner amount in the app uses them.</p>
+    <div class="tablewrap"><table>
+      <tr><th>Bet</th><th>Pays per $10</th></tr>
+      <tr><td>Number</td><td><input class="rate" id="rate-base" type="number" inputmode="numeric" min="0"></td></tr>
+      <tr><td>Mega, gold ball drawn, extra</td><td><input class="rate" id="rate-mega" type="number" inputmode="numeric" min="0"></td></tr>
+      <tr><td>Monsta, red ball drawn, extra</td><td><input class="rate" id="rate-monsta" type="number" inputmode="numeric" min="0"></td></tr>
+      <tr><td>Monsta, red with gold, extra</td><td><input class="rate" id="rate-monstaGold" type="number" inputmode="numeric" min="0"></td></tr>
+    </table></div>
+    <div class="row" style="margin-top:10px"><button class="btn primary" id="btn-rates">Save rates</button><button class="btn ghost" id="btn-rates-official">Official rates</button></div>
+    <p class="note">Official Supreme Ventures rates are $280, $700, $300 and $1,000. This owner pays $320 on the number, so that is the starting value.</p>
     <p class="note" id="stats"></p>
   </section>
 </div>
@@ -252,7 +262,7 @@ const CO = (() => {
     {key:'1700', label:'5:00 PM',  h:17, m:0},
     {key:'2025', label:'8:25 PM',  h:20, m:25}
   ];
-  const RATE = {base:28, mega:70, monsta:30, monstaGold:100};
+  const RATE = {base:32, mega:70, monsta:30, monstaGold:100};
   const MON = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
   const DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'], MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const pad = n => String(n).padStart(2,'0');
@@ -312,28 +322,29 @@ const CO = (() => {
     for (const p of plays){ const r = map.get(p.n) || {n:p.n, count:0, b:0, m:0, s:0, all:0}; r.count++; r.b += p.b; r.m += p.m; r.s += p.s; r.all += p.b+p.m+p.s; map.set(p.n, r); }
     return [...map.values()].sort((a,b) => a.n - b.n);
   }
-  function playWin(p, res){
+  function playWin(p, res, rates){
+    const R = rates || RATE;
     if (!res || p.n !== res.n) return {base:0, mega:0, monsta:0, total:0};
-    const base = p.b * RATE.base;
-    const mega = res.gold ? p.m * RATE.mega : 0;
-    const monsta = res.red && p.m > 0 ? p.s * (res.gold ? RATE.monstaGold : RATE.monsta) : 0;
+    const base = p.b * R.base;
+    const mega = res.gold ? p.m * R.mega : 0;
+    const monsta = res.red && p.m > 0 ? p.s * (res.gold ? R.monstaGold : R.monsta) : 0;
     return {base, mega, monsta, total: base + mega + monsta};
   }
-  function winners(reports, res){
-    return reports.map(r => { const hits = r.plays.filter(p => p.n === res.n).map(p => ({p, w: playWin(p, res)})); return {op: r.op, hits, pay: hits.reduce((a,x) => a + x.w.total, 0)}; });
+  function winners(reports, res, rates){
+    return reports.map(r => { const hits = r.plays.filter(p => p.n === res.n).map(p => ({p, w: playWin(p, res, rates)})); return {op: r.op, hits, pay: hits.reduce((a,x) => a + x.w.total, 0)}; });
   }
-  function resultText(date, key, res, reports){
+  function resultText(date, key, res, reports, rates){
     const L = ['CASH POT RESULT · '+byKey(key).label+' · '+fmtDate(date)];
     L.push('Number '+res.n+' · Mega '+(res.gold ? 'GOLD' : 'white')+' · Monsta '+(res.red ? 'RED' : 'white'));
     L.push('');
     let tot = 0;
-    for (const w of winners(reports, res)){ tot += w.pay; L.push(w.op+': '+(w.hits.length ? w.hits.length+' winning play'+(w.hits.length>1?'s':'')+' · $'+fmt(w.pay) : 'no winners')); }
+    for (const w of winners(reports, res, rates)){ tot += w.pay; L.push(w.op+': '+(w.hits.length ? w.hits.length+' winning play'+(w.hits.length>1?'s':'')+' · $'+fmt(w.pay) : 'no winners')); }
     L.push(''); L.push('Total won: $'+fmt(tot));
     return L.join('\n');
   }
-  function toCSV(reports, results){
+  function toCSV(reports, results, rates){
     const rows = [['date','draw','operator','number','base','mega','monsta','won']];
-    for (const r of Object.values(reports)){ const res = results[r.date+'_'+r.key] || null; for (const p of r.plays) rows.push([r.date, byKey(r.key).label, r.op, p.n, p.b, p.m, p.s, playWin(p, res).total]); }
+    for (const r of Object.values(reports)){ const res = results[r.date+'_'+r.key] || null; for (const p of r.plays) rows.push([r.date, byKey(r.key).label, r.op, p.n, p.b, p.m, p.s, playWin(p, res, rates).total]); }
     return rows.map(r => r.map(v => /[",\n]/.test(String(v)) ? '"'+String(v).replace(/"/g,'""')+'"' : v).join(',')).join('\n');
   }
   const EXAMPLE = (date) => [
@@ -354,10 +365,10 @@ const CO = (() => {
 (() => {
   const $ = id => document.getElementById(id);
   const KEY = 'cashpot_owner_v1';
-  const empty = () => ({reports:{}, results:{}, sel:null, month:null});
+  const empty = () => ({reports:{}, results:{}, sel:null, month:null, rates:Object.assign({}, CO.RATE)});
   let S = empty();
   const canStore = (() => { try { localStorage.setItem('co_t','1'); localStorage.removeItem('co_t'); return true; } catch(e){ return false; } })();
-  const load = () => { try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(empty(), JSON.parse(raw)); } catch(e){} };
+  const load = () => { try { const raw = localStorage.getItem(KEY); if (raw) S = Object.assign(empty(), JSON.parse(raw)); } catch(e){} S.rates = Object.assign({}, CO.RATE, S.rates || {}); };
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e){} };
   const now = () => new Date();
   const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -375,6 +386,7 @@ const CO = (() => {
   function render(){
     if (view === 'day') renderDay();
     if (view === 'month') renderMonth();
+    if (view === 'more'){ for (const k of ['base','mega','monsta','monstaGold']) $('rate-'+k).value = S.rates[k] * 10; }
     if (view === 'more') $('stats').textContent = Object.keys(S.reports).length+' reports and '+Object.keys(S.results).length+' results stored on this device.';
   }
 
@@ -401,7 +413,7 @@ const CO = (() => {
       }
       if (res){
         html += '<div class="result"><span class="big num">'+res.n+'</span><span class="ball '+(res.gold?'gold':'white')+'"><i></i>Mega '+(res.gold?'GOLD':'white')+'</span><span class="ball '+(res.red?'red':'white')+'"><i></i>Monsta '+(res.red?'RED':'white')+'</span></div>';
-        const ws = CO.winners(reps, res); const tot = ws.reduce((a,w) => a + w.pay, 0); dayWon += tot;
+        const ws = CO.winners(reps, res, S.rates); const tot = ws.reduce((a,w) => a + w.pay, 0); dayWon += tot;
         html += '<div class="wins">'+ws.map(w => w.hits.length
           ? '<div class="win"><span>'+esc(w.op)+'<small>'+w.hits.map(h => '#'+h.p.n+' '+h.p.b+(h.p.m?'/'+h.p.m:'')+(h.p.s?'/'+h.p.s:'')+' → $'+CO.fmt(h.w.total)).join(' · ')+'</small></span><b>$'+CO.fmt(w.pay)+'</b></div>'
           : '<div class="win none"><span>'+esc(w.op)+'</span><b>no winners</b></div>').join('')
@@ -423,7 +435,7 @@ const CO = (() => {
     const key = b.dataset.key, act = b.dataset.act;
     if (act === 'bynum') openByNumber(S.sel, key);
     if (act === 'result') openResult(S.sel, key);
-    if (act === 'copyres') copyText(CO.resultText(S.sel, key, resFor(S.sel, key), reportsFor(S.sel, key)));
+    if (act === 'copyres') copyText(CO.resultText(S.sel, key, resFor(S.sel, key), reportsFor(S.sel, key), S.rates));
     if (act === 'delreps'){
       if (b.dataset.arm){ for (const r of reportsFor(S.sel, key)) delete S.reports[CO.reportId(r.op, r.date, r.key)]; save(); toast('Reports removed'); render(); }
       else { b.dataset.arm = '1'; b.textContent = 'Tap again to remove'; setTimeout(() => { delete b.dataset.arm; b.textContent = 'Remove reports'; }, 3000); }
@@ -496,7 +508,7 @@ const CO = (() => {
     const ops = new Map(), days = new Map();
     for (const r of reps){
       const res = resFor(r.date, r.key); const t = CO.totals(r.plays);
-      const won = r.plays.reduce((a,p) => a + CO.playWin(p, res).total, 0);
+      const won = r.plays.reduce((a,p) => a + CO.playWin(p, res, S.rates).total, 0);
       const o = ops.get(r.op) || {op:r.op, reports:0, plays:0, col:0, won:0}; o.reports++; o.plays += t.count; o.col += t.all; o.won += won; ops.set(r.op, o);
       const d = days.get(r.date) || {date:r.date, reports:0, col:0, won:0}; d.reports++; d.col += t.all; d.won += won; days.set(r.date, d);
     }
@@ -515,7 +527,7 @@ const CO = (() => {
     const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); document.body.removeChild(a); setTimeout(() => URL.revokeObjectURL(url), 2000);
   }
   $('btn-backup').addEventListener('click', () => { download('cashpot-backup-'+CO.dateKey(now())+'.json', JSON.stringify(S, null, 1), 'application/json'); toast('Backup downloaded'); });
-  $('btn-csv').addEventListener('click', () => { download('cashpot-plays-'+CO.dateKey(now())+'.csv', CO.toCSV(S.reports, S.results), 'text/csv'); toast('CSV downloaded'); });
+  $('btn-csv').addEventListener('click', () => { download('cashpot-plays-'+CO.dateKey(now())+'.csv', CO.toCSV(S.reports, S.results, S.rates), 'text/csv'); toast('CSV downloaded'); });
   $('btn-restore').addEventListener('click', () => $('file-restore').click());
   $('file-restore').addEventListener('change', e => {
     const f = e.target.files && e.target.files[0]; if (!f) return;
@@ -529,6 +541,11 @@ const CO = (() => {
     S.results[date+'_0830'] = {n:7, gold:true, red:false, at:new Date().toISOString()};
     S.sel = date; save(); toast('Example loaded: two operators, result 7 · gold'); show('day');
   });
+  $('btn-rates').addEventListener('click', () => {
+    const r = {}; for (const k of ['base','mega','monsta','monstaGold']){ const v = Number($('rate-'+k).value); if (!(v >= 0)){ toast('Rates must be numbers'); return; } r[k] = v / 10; }
+    S.rates = r; save(); toast('Rates saved: $'+(r.base*10)+' on the number'); render();
+  });
+  $('btn-rates-official').addEventListener('click', () => { S.rates = {base:28, mega:70, monsta:30, monstaGold:100}; save(); toast('Official rates set'); render(); });
   let wipeArmed = false;
   $('btn-wipe').addEventListener('click', () => {
     if (!wipeArmed){ wipeArmed = true; $('btn-wipe').textContent = 'Tap again to erase everything'; setTimeout(() => { wipeArmed = false; $('btn-wipe').textContent = 'Erase everything'; }, 4000); return; }
