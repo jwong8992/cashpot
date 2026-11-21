@@ -117,6 +117,8 @@ p{margin:0 0 12px;color:var(--ink2);max-width:62ch}
 .win b{font-variant-numeric:tabular-nums;font-size:16px}
 .win small{display:block;color:var(--ink2);font-size:12px;margin-top:2px}
 .win.none{background:var(--surface2);color:var(--ink3)}
+.win.cp{grid-template-columns:1fr auto auto;align-items:center}
+.win.cp .btn{min-height:32px;padding:4px 12px}
 .win.total{background:transparent;border:1px dashed var(--line);color:var(--ink);font-weight:600}
 
 table{width:100%;border-collapse:collapse;font-size:14px;font-variant-numeric:tabular-nums}
@@ -125,6 +127,9 @@ td{padding:7px 6px;border-bottom:1px solid var(--line);text-align:right}
 th:first-child,td:first-child{text-align:left}
 tr.tot td{font-weight:700;border-bottom:0}
 tr.hot td{background:var(--gold-soft)}
+tr.tap{cursor:pointer}
+tr.tap td:first-child{font-weight:600;color:var(--green-deep)}
+tr.tap td:first-child::after{content:" ›";color:var(--ink3)}
 .tablewrap{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px 8px}
 .empty{padding:22px 14px;text-align:center;color:var(--ink3);border:1px dashed var(--line);border-radius:10px;font-size:15px}
 
@@ -135,6 +140,13 @@ textarea{width:100%;min-height:200px;padding:12px;border:1px solid var(--line);b
 .oc.err{background:var(--red-soft);color:var(--red-ink)}
 .file{display:none}
 .rate{width:110px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface2);text-align:right;font-variant-numeric:tabular-nums}
+
+.period{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-block:0 10px}
+.period button{min-height:40px;border-radius:10px;background:var(--surface2);font-weight:600;color:var(--ink2)}
+.period button.on{background:var(--green-soft);color:var(--green-deep)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-block:0 10px}
+.chips button{min-height:38px;padding:0 14px;border-radius:999px;background:var(--surface2);font-weight:600;color:var(--ink2);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chips button.on{background:var(--green-soft);color:var(--green-deep)}
 
 .tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);box-shadow:var(--shadow);padding:6px 8px calc(6px + env(safe-area-inset-bottom,0px))}
 .tabs .in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
@@ -196,15 +208,22 @@ pre.msg{white-space:pre-wrap;word-break:break-word;background:var(--surface2);bo
 
   <!-- MONTH -->
   <section id="view-month" hidden>
+    <div class="period" id="period"><button data-p="day">Day</button><button data-p="week">Week</button><button data-p="month">Month</button></div>
     <div class="datebar">
       <div class="date" id="month-label">Month</div>
-      <div class="nav"><button id="month-prev" aria-label="Previous month">‹</button><button id="month-next" aria-label="Next month">›</button></div>
+      <div class="nav"><button id="month-prev" aria-label="Previous">‹</button><button id="month-next" aria-label="Next">›</button></div>
     </div>
+    <div class="chips" id="op-pick" hidden></div>
+    <div id="tot-pending" class="banner warn" hidden></div>
+    <div id="all-wrap">
     <h3>By operator</h3>
     <div class="tablewrap" id="month-ops"></div>
-    <h3>By day</h3>
+    <p class="note" id="op-hint" style="margin-block:6px 0">Tap an operator to see only that operator and copy the message for WhatsApp.</p>
+    <h3 id="days-h">By day</h3>
     <div class="tablewrap" id="month-days"></div>
-    <p class="note">Collected is what the operators took in. Won is what the drawn results pay on those plays. Difference is collected minus won.</p>
+    </div>
+    <div id="one-wrap" hidden></div>
+    <p class="note">Collected is what the operators took in. Won is what the drawn results pay on those plays. Diff (difference) is collected minus won.</p>
   </section>
 
   <!-- MORE -->
@@ -243,7 +262,7 @@ pre.msg{white-space:pre-wrap;word-break:break-word;background:var(--surface2);bo
 <nav class="tabs"><div class="in">
   <button data-v="day" class="on"><span>▦</span>Day</button>
   <button data-v="paste"><span>⌘</span>Paste</button>
-  <button data-v="month"><span>Σ</span>Month</button>
+  <button data-v="month"><span>Σ</span>Totals</button>
   <button data-v="more"><span>⋯</span>More</button>
 </div></nav>
 
@@ -333,14 +352,81 @@ const CO = (() => {
   function winners(reports, res, rates){
     return reports.map(r => { const hits = r.plays.filter(p => p.n === res.n).map(p => ({p, w: playWin(p, res, rates)})); return {op: r.op, hits, pay: hits.reduce((a,x) => a + x.w.total, 0)}; });
   }
-  function resultText(date, key, res, reports, rates){
+  function resultText(date, key, res, report, rates){
     const L = ['CASH POT RESULT · '+byKey(key).label+' · '+fmtDate(date)];
     L.push('Number '+res.n+' · Mega '+(res.gold ? 'GOLD' : 'white')+' · Monsta '+(res.red ? 'RED' : 'white'));
     L.push('');
-    let tot = 0;
-    for (const w of winners(reports, res, rates)){ tot += w.pay; L.push(w.op+': '+(w.hits.length ? w.hits.length+' winning play'+(w.hits.length>1?'s':'')+' · $'+fmt(w.pay) : 'no winners')); }
-    L.push(''); L.push('Total won: $'+fmt(tot));
+    const w = winners([report], res, rates)[0];
+    L.push(w.op+': '+(w.hits.length ? w.hits.length+' winning play'+(w.hits.length>1?'s':'')+' · $'+fmt(w.pay) : 'no winners'));
+    for (const h of w.hits) L.push('#'+h.p.n+' '+h.p.b+(h.p.m ? '/'+h.p.m : '')+(h.p.s ? '/'+h.p.s : '')+' → $'+fmt(h.w.total));
     return L.join('\n');
+  }
+  function weekStart(dateStr){ const [y,mo,da] = dateStr.split('-').map(Number); const back = (new Date(y, mo-1, da).getDay() + 6) % 7; return dateKey(new Date(y, mo-1, da-back)); }
+  function fmtRange(a, b){ const [y,mo,da] = a.split('-').map(Number); const d = new Date(y, mo-1, da); return DAYS[d.getDay()]+' '+da+' '+MONTHS[mo-1]+' – '+fmtDate(b); }
+  function summarize(reports, results, rates, from, to){
+    const ops = new Map(), days = new Map(), open = new Set();
+    for (const r of Object.values(reports)){
+      if (r.date < from || r.date > to) continue;
+      const res = results[r.date+'_'+r.key] || null; if (!res) open.add(r.date+'_'+r.key);
+      const t = totals(r.plays); const won = r.plays.reduce((a,p) => a + playWin(p, res, rates).total, 0);
+      const k = r.op.trim().toLowerCase();
+      const o = ops.get(k) || {key:k, op:r.op.trim(), reports:0, plays:0, col:0, won:0}; o.reports++; o.plays += t.count; o.col += t.all; o.won += won; ops.set(k, o);
+      const d = days.get(r.date) || {date:r.date, reports:0, plays:0, col:0, won:0}; d.reports++; d.plays += t.count; d.col += t.all; d.won += won; days.set(r.date, d);
+    }
+    const O = [...ops.values()].sort((a,b) => b.col - a.col || a.op.localeCompare(b.op)), D = [...days.values()].sort((a,b) => a.date.localeCompare(b.date));
+    const tot = O.reduce((a,o) => ({col:a.col+o.col, won:a.won+o.won, plays:a.plays+o.plays, reports:a.reports+o.reports}), {col:0,won:0,plays:0,reports:0});
+    return {ops:O, days:D, tot, pending:open.size};
+  }
+  const money = n => (n < 0 ? '-' : '')+'$'+fmt(Math.abs(n));
+  function opMessage(reports, results, rates, opKey, from, to){
+    const mine = Object.values(reports).filter(r => r.op.trim().toLowerCase() === opKey && r.date >= from && r.date <= to)
+      .sort((a,b) => a.date.localeCompare(b.date) || a.key.localeCompare(b.key));
+    if (!mine.length) return '';
+    const oneDay = from === to;
+    const L = ['CASH POT · '+mine[0].op.trim()+' · '+(oneDay ? fmtDate(from) : fmtRange(from, to)), ''];
+    let col = 0, won = 0, open = 0; const days = new Map();
+    for (const r of mine){
+      const res = results[r.date+'_'+r.key] || null; const t = totals(r.plays);
+      const hits = res ? r.plays.filter(p => p.n === res.n).map(p => ({p, w: playWin(p, res, rates).total})) : [];
+      const w = hits.reduce((a,h) => a + h.w, 0);
+      col += t.all; won += w; if (!res) open++;
+      const d = days.get(r.date) || {col:0, won:0}; d.col += t.all; d.won += w; days.set(r.date, d);
+      if (oneDay){
+        L.push(byKey(r.key).label+' · '+t.count+' play'+(t.count === 1 ? '' : 's')+' · $'+fmt(t.all));
+        if (!res) L.push('No result yet');
+        else {
+          L.push('Result '+res.n+' · Mega '+(res.gold ? 'GOLD' : 'white')+' · Monsta '+(res.red ? 'RED' : 'white'));
+          if (!hits.length) L.push('No winners');
+          for (const h of hits) L.push('Winner: #'+h.p.n+' '+h.p.b+(h.p.m ? '/'+h.p.m : '')+(h.p.s ? '/'+h.p.s : '')+' → $'+fmt(h.w));
+          if (hits.length > 1) L.push('Won this draw: $'+fmt(w));
+        }
+        L.push('');
+      }
+    }
+    if (!oneDay){ for (const [date, d] of days) L.push(fmtDate(date)+': collected $'+fmt(d.col)+' · won $'+fmt(d.won)); L.push(''); }
+    L.push('Collected: $'+fmt(col)); L.push('Won: $'+fmt(won)); L.push('Difference: '+money(col - won));
+    if (open) L.push(open+' draw'+(open > 1 ? 's have' : ' has')+' no result yet.');
+    return L.join('\n');
+  }
+  function opList(reports){
+    const m = new Map();
+    for (const r of Object.values(reports)){ const k = r.op.trim().toLowerCase(); if (!m.has(k)) m.set(k, {key:k, op:r.op.trim()}); }
+    return [...m.values()].sort((a,b) => a.op.localeCompare(b.op));
+  }
+  function opDetail(reports, results, rates, opKey, from, to){
+    const mine = Object.values(reports).filter(r => r.op.trim().toLowerCase() === opKey && r.date >= from && r.date <= to)
+      .sort((a,b) => a.date.localeCompare(b.date) || a.key.localeCompare(b.key));
+    const draws = [], days = new Map(), tot = {plays:0, col:0, won:0}; let pending = 0;
+    for (const r of mine){
+      const res = results[r.date+'_'+r.key] || null; const t = totals(r.plays);
+      const hits = res ? r.plays.filter(p => p.n === res.n).map(p => ({p, w: playWin(p, res, rates).total})) : [];
+      const won = hits.reduce((a,h) => a + h.w, 0);
+      if (!res) pending++;
+      draws.push({date:r.date, key:r.key, label:byKey(r.key).label, count:t.count, col:t.all, res, hits, won});
+      const d = days.get(r.date) || {date:r.date, plays:0, col:0, won:0}; d.plays += t.count; d.col += t.all; d.won += won; days.set(r.date, d);
+      tot.plays += t.count; tot.col += t.all; tot.won += won;
+    }
+    return {op: mine.length ? mine[0].op.trim() : '', draws, days:[...days.values()], tot, pending};
   }
   function toCSV(reports, results, rates){
     const rows = [['date','draw','operator','number','base','mega','monsta','won']];
@@ -356,7 +442,7 @@ const CO = (() => {
     'CASH POT · 8:30 AM · '+fmtDate(date), 'Operator: Keisha (example)', '', 'PLAYS',
     '7: 50 · Mega 20','9: 100','13: 100 · Mega 50 · Monsta 50','25: 20','36: 100 · Mega 100 · Monsta 100','', 'Plays: 5','TOTAL: $690'
   ].join('\n');
-  return {DRAWS, RATE, dateKey, byKey, shiftDate, fmtDate, fmtMonth, shiftMonth, fmt, pad, parseReports, reportId, totals, byNumber, playWin, winners, resultText, toCSV, EXAMPLE};
+  return {DRAWS, RATE, dateKey, byKey, shiftDate, fmtDate, fmtMonth, shiftMonth, fmt, pad, parseReports, reportId, totals, byNumber, playWin, winners, resultText, weekStart, fmtRange, summarize, opMessage, opList, opDetail, money, toCSV, EXAMPLE};
 })();
 </script>
 
@@ -414,15 +500,15 @@ const CO = (() => {
       if (res){
         html += '<div class="result"><span class="big num">'+res.n+'</span><span class="ball '+(res.gold?'gold':'white')+'"><i></i>Mega '+(res.gold?'GOLD':'white')+'</span><span class="ball '+(res.red?'red':'white')+'"><i></i>Monsta '+(res.red?'RED':'white')+'</span></div>';
         const ws = CO.winners(reps, res, S.rates); const tot = ws.reduce((a,w) => a + w.pay, 0); dayWon += tot;
-        html += '<div class="wins">'+ws.map(w => w.hits.length
-          ? '<div class="win"><span>'+esc(w.op)+'<small>'+w.hits.map(h => '#'+h.p.n+' '+h.p.b+(h.p.m?'/'+h.p.m:'')+(h.p.s?'/'+h.p.s:'')+' → $'+CO.fmt(h.w.total)).join(' · ')+'</small></span><b>$'+CO.fmt(w.pay)+'</b></div>'
-          : '<div class="win none"><span>'+esc(w.op)+'</span><b>no winners</b></div>').join('')
+        const cpb = i => '<button class="btn sm" data-act="copyres" data-key="'+d.key+'" data-i="'+i+'">Copy</button>';
+        html += '<div class="wins">'+ws.map((w, i) => w.hits.length
+          ? '<div class="win cp"><span>'+esc(w.op)+'<small>'+w.hits.map(h => '#'+h.p.n+' '+h.p.b+(h.p.m?'/'+h.p.m:'')+(h.p.s?'/'+h.p.s:'')+' → $'+CO.fmt(h.w.total)).join(' · ')+'</small></span><b>$'+CO.fmt(w.pay)+'</b>'+cpb(i)+'</div>'
+          : '<div class="win none cp"><span>'+esc(w.op)+'</span><b>no winners</b>'+cpb(i)+'</div>').join('')
           + (reps.length ? '<div class="win total"><span>Total won this draw</span><b>$'+CO.fmt(tot)+'</b></div>' : '')+'</div>';
       }
       html += '<div class="acts">'
         + (reps.length ? '<button class="btn sm" data-act="bynum" data-key="'+d.key+'">By number</button>' : '')
         + '<button class="btn sm '+(res ? '' : 'primary')+'" data-act="result" data-key="'+d.key+'">'+(res ? 'Change result' : 'Enter result')+'</button>'
-        + (res && reps.length ? '<button class="btn sm" data-act="copyres" data-key="'+d.key+'">Copy result message</button>' : '')
         + (reps.length ? '<button class="btn sm ghost" data-act="delreps" data-key="'+d.key+'">Remove reports</button>' : '')
         + '</div>';
       card.innerHTML = html; box.appendChild(card);
@@ -435,7 +521,7 @@ const CO = (() => {
     const key = b.dataset.key, act = b.dataset.act;
     if (act === 'bynum') openByNumber(S.sel, key);
     if (act === 'result') openResult(S.sel, key);
-    if (act === 'copyres') copyText(CO.resultText(S.sel, key, resFor(S.sel, key), reportsFor(S.sel, key), S.rates));
+    if (act === 'copyres'){ const r = reportsFor(S.sel, key)[+b.dataset.i], res = resFor(S.sel, key); if (r && res) copyText(CO.resultText(S.sel, key, res, r, S.rates)); }
     if (act === 'delreps'){
       if (b.dataset.arm){ for (const r of reportsFor(S.sel, key)) delete S.reports[CO.reportId(r.op, r.date, r.key)]; save(); toast('Reports removed'); render(); }
       else { b.dataset.arm = '1'; b.textContent = 'Tap again to remove'; setTimeout(() => { delete b.dataset.arm; b.textContent = 'Remove reports'; }, 3000); }
@@ -500,23 +586,92 @@ const CO = (() => {
   }
 
   /* ---------- month ---------- */
-  $('month-prev').addEventListener('click', () => { S.month = CO.shiftMonth(S.month, -1); save(); render(); });
-  $('month-next').addEventListener('click', () => { S.month = CO.shiftMonth(S.month, 1); save(); render(); });
-  function renderMonth(){
-    $('month-label').textContent = CO.fmtMonth(S.month);
-    const reps = Object.values(S.reports).filter(r => r.date.startsWith(S.month));
-    const ops = new Map(), days = new Map();
-    for (const r of reps){
-      const res = resFor(r.date, r.key); const t = CO.totals(r.plays);
-      const won = r.plays.reduce((a,p) => a + CO.playWin(p, res, S.rates).total, 0);
-      const o = ops.get(r.op) || {op:r.op, reports:0, plays:0, col:0, won:0}; o.reports++; o.plays += t.count; o.col += t.all; o.won += won; ops.set(r.op, o);
-      const d = days.get(r.date) || {date:r.date, reports:0, col:0, won:0}; d.reports++; d.col += t.all; d.won += won; days.set(r.date, d);
+  function stepTotals(n){
+    const p = S.period || 'day';
+    if (p === 'day') S.sel = CO.shiftDate(S.sel, n);
+    else if (p === 'week') S.week = CO.shiftDate(S.week || CO.weekStart(S.sel), 7*n);
+    else S.month = CO.shiftMonth(S.month, n);
+    save(); render();
+  }
+  $('month-prev').addEventListener('click', () => stepTotals(-1));
+  $('month-next').addEventListener('click', () => stepTotals(1));
+  $('period').addEventListener('click', e => {
+    const b = e.target.closest('button[data-p]'); if (!b) return;
+    S.period = b.dataset.p;
+    if (S.period === 'week') S.week = CO.weekStart(S.sel);
+    if (S.period === 'month') S.month = S.sel.slice(0,7);
+    save(); render();
+  });
+  let totRange = null;
+  $('month-ops').addEventListener('click', e => {
+    const tr = e.target.closest('tr[data-op]'); if (!tr) return;
+    S.op = tr.dataset.op; save(); render(); window.scrollTo(0,0);
+  });
+  $('op-pick').addEventListener('click', e => {
+    const b = e.target.closest('button[data-op]'); if (!b) return;
+    S.op = b.dataset.op || null; save(); render();
+  });
+  $('one-wrap').addEventListener('click', e => {
+    if (e.target.closest('#one-copy') && totRange && S.op){ const text = CO.opMessage(S.reports, S.results, S.rates, S.op, totRange.from, totRange.to); if (text) copyText(text); return; }
+    const tr = e.target.closest('tr[data-date]'); if (!tr) return;
+    S.sel = tr.dataset.date; S.period = 'day'; save(); render(); window.scrollTo(0,0);
+  });
+  function renderOne(p, from, to, name){
+    const d = CO.opDetail(S.reports, S.results, S.rates, S.op, from, to), t = d.tot;
+    $('tot-pending').hidden = !d.pending;
+    $('tot-pending').innerHTML = '<span>'+d.pending+' draw'+(d.pending>1?'s have':' has')+' no result yet, so Won is not final.</span>';
+    let html = '<div class="daytot"><div><small>Plays</small><b>'+t.plays+'</b></div><div><small>Collected</small><b>$'+CO.fmt(t.col)+'</b></div><div><small>Won</small><b>$'+CO.fmt(t.won)+'</b></div><div><small>Diff</small><b>'+CO.money(t.col-t.won)+'</b></div></div>';
+    if (!d.draws.length){
+      html += '<div class="empty">No reports from '+esc(name)+(p === 'day' ? ' on this day.' : p === 'week' ? ' in this week.' : ' in this month.')+'</div>';
+    } else if (p === 'day'){
+      for (const w of d.draws){
+        html += '<div class="card"><div class="head"><div class="t">'+w.label+'<small>'+w.count+' play'+(w.count === 1 ? '' : 's')+' · $'+CO.fmt(w.col)+'</small></div>'
+          + '<span class="pill '+(w.res ? 'done' : 'some')+'">'+(w.res ? 'result in' : 'waiting result')+'</span></div>';
+        if (w.res){
+          html += '<div class="result"><span class="big num">'+w.res.n+'</span><span class="ball '+(w.res.gold?'gold':'white')+'"><i></i>Mega '+(w.res.gold?'GOLD':'white')+'</span><span class="ball '+(w.res.red?'red':'white')+'"><i></i>Monsta '+(w.res.red?'RED':'white')+'</span></div>';
+          html += '<div class="wins">'+(w.hits.length
+            ? w.hits.map(h => '<div class="win"><span>#'+h.p.n+' '+h.p.b+(h.p.m?'/'+h.p.m:'')+(h.p.s?'/'+h.p.s:'')+'</span><b>$'+CO.fmt(h.w)+'</b></div>').join('')
+              + (w.hits.length > 1 ? '<div class="win total"><span>Won this draw</span><b>$'+CO.fmt(w.won)+'</b></div>' : '')
+            : '<div class="win none"><span>This draw</span><b>no winners</b></div>')+'</div>';
+        }
+        html += '</div>';
+      }
+    } else {
+      html += '<h3>By day</h3><div class="tablewrap"><table><tr><th>Day</th><th>Plays</th><th>Collected</th><th>Won</th><th>Diff</th></tr>'
+        + d.days.map(x => '<tr class="tap" data-date="'+x.date+'"><td>'+CO.fmtDate(x.date)+'</td><td>'+x.plays+'</td><td>'+CO.fmt(x.col)+'</td><td>'+CO.fmt(x.won)+'</td><td>'+CO.fmt(x.col-x.won)+'</td></tr>').join('')
+        + '<tr class="tot"><td>All</td><td>'+t.plays+'</td><td>'+CO.fmt(t.col)+'</td><td>'+CO.fmt(t.won)+'</td><td>'+CO.fmt(t.col-t.won)+'</td></tr></table></div>'
+        + '<p class="note" style="margin-block:6px 0">Tap a day to see its draws.</p>';
     }
-    const O = [...ops.values()].sort((a,b) => b.col - a.col), D = [...days.values()].sort((a,b) => a.date.localeCompare(b.date));
-    const tot = O.reduce((a,o) => ({col:a.col+o.col, won:a.won+o.won, plays:a.plays+o.plays, reports:a.reports+o.reports}), {col:0,won:0,plays:0,reports:0});
-    $('month-ops').innerHTML = O.length ? '<table><tr><th>Operator</th><th>Reports</th><th>Plays</th><th>Collected</th><th>Won</th><th>Difference</th></tr>'
-      + O.map(o => '<tr><td>'+esc(o.op)+'</td><td>'+o.reports+'</td><td>'+o.plays+'</td><td>'+CO.fmt(o.col)+'</td><td>'+CO.fmt(o.won)+'</td><td>'+CO.fmt(o.col-o.won)+'</td></tr>').join('')
-      + '<tr class="tot"><td>All</td><td>'+tot.reports+'</td><td>'+tot.plays+'</td><td>'+CO.fmt(tot.col)+'</td><td>'+CO.fmt(tot.won)+'</td><td>'+CO.fmt(tot.col-tot.won)+'</td></tr></table>' : '<div class="empty">No reports in this month.</div>';
+    if (d.draws.length){
+      const text = CO.opMessage(S.reports, S.results, S.rates, S.op, from, to);
+      html += '<h3>Message for '+esc(name)+'</h3><pre class="msg">'+esc(text)+'</pre><div class="row"><button class="btn primary" id="one-copy">Copy message</button></div>';
+    }
+    $('one-wrap').innerHTML = html;
+  }
+  function renderMonth(){
+    const p = S.period || 'day';
+    if (!S.week) S.week = CO.weekStart(S.sel);
+    $('period').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
+    let from, to, label;
+    if (p === 'day'){ from = to = S.sel; label = CO.fmtDate(S.sel); }
+    else if (p === 'week'){ from = S.week; to = CO.shiftDate(S.week, 6); label = CO.fmtRange(from, to); }
+    else { from = S.month+'-01'; const [my, mm] = S.month.split('-').map(Number); to = S.month+'-'+CO.pad(new Date(my, mm, 0).getDate()); label = CO.fmtMonth(S.month); }
+    $('month-label').textContent = label; totRange = {from, to};
+    const ops = CO.opList(S.reports), cur = S.op ? ops.find(o => o.key === S.op) : null;
+    if (!cur) S.op = null;
+    $('op-pick').hidden = !ops.length;
+    $('op-pick').innerHTML = '<button data-op=""'+(cur ? '' : ' class="on"')+'>All</button>'+ops.map(o => '<button data-op="'+esc(o.key)+'"'+(cur && cur.key === o.key ? ' class="on"' : '')+'>'+esc(o.op)+'</button>').join('');
+    $('all-wrap').hidden = !!cur; $('one-wrap').hidden = !cur;
+    if (cur){ renderOne(p, from, to, cur.op); return; }
+    const sm = CO.summarize(S.reports, S.results, S.rates, from, to), O = sm.ops, D = sm.days, tot = sm.tot;
+    $('tot-pending').hidden = !sm.pending;
+    $('tot-pending').innerHTML = '<span>'+sm.pending+' draw'+(sm.pending>1?'s have':' has')+' no result yet, so Won is not final.</span>';
+    const none = p === 'day' ? 'No reports on this day.' : p === 'week' ? 'No reports in this week.' : 'No reports in this month.';
+    $('month-ops').innerHTML = O.length ? '<table><tr><th>Operator</th><th>Plays</th><th>Collected</th><th>Won</th><th>Diff</th></tr>'
+      + O.map(o => '<tr class="tap" data-op="'+esc(o.key)+'"><td>'+esc(o.op)+'</td><td>'+o.plays+'</td><td>'+CO.fmt(o.col)+'</td><td>'+CO.fmt(o.won)+'</td><td>'+CO.fmt(o.col-o.won)+'</td></tr>').join('')
+      + '<tr class="tot"><td>All</td><td>'+tot.plays+'</td><td>'+CO.fmt(tot.col)+'</td><td>'+CO.fmt(tot.won)+'</td><td>'+CO.fmt(tot.col-tot.won)+'</td></tr></table>' : '<div class="empty">'+none+'</div>';
+    $('op-hint').hidden = !O.length;
+    $('days-h').hidden = $('month-days').hidden = p === 'day';
     $('month-days').innerHTML = D.length ? '<table><tr><th>Day</th><th>Reports</th><th>Collected</th><th>Won</th><th>Difference</th></tr>'
       + D.map(d => '<tr><td>'+CO.fmtDate(d.date)+'</td><td>'+d.reports+'</td><td>'+CO.fmt(d.col)+'</td><td>'+CO.fmt(d.won)+'</td><td>'+CO.fmt(d.col-d.won)+'</td></tr>').join('')+'</table>' : '<div class="empty">No days yet.</div>';
   }
