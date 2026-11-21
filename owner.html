@@ -192,6 +192,8 @@ pre.msg{white-space:pre-wrap;word-break:break-word;background:var(--surface2);bo
     </div>
     <div class="daytot" id="daytot"></div>
     <div id="draws"></div>
+    <div class="row"><button class="btn ghost" id="btn-saved">Saved days</button></div>
+    <p class="note">Every day stays saved on this phone. Nothing resets at the end of the day.</p>
   </section>
 
   <!-- PASTE -->
@@ -229,8 +231,11 @@ pre.msg{white-space:pre-wrap;word-break:break-word;background:var(--surface2);bo
   <!-- MORE -->
   <section id="view-more" hidden>
     <h2>Backup and export</h2>
-    <p>Everything lives in this browser only. Download a backup now and then, and keep it somewhere safe.</p>
+    <p>Every day you enter stays saved on this phone, in this browser. Nothing resets, and you do not need to download anything each day. A backup is only a safety copy, in case the phone is lost or the browser's data is cleared. Once a week is plenty.</p>
     <div class="row">
+      <button class="btn ghost" id="btn-saved2">Saved days</button>
+    </div>
+    <div class="row" style="margin-top:10px">
       <button class="btn primary" id="btn-backup">Download backup</button>
       <button class="btn" id="btn-csv">Download CSV of all plays</button>
     </div>
@@ -546,6 +551,18 @@ const CO = (() => {
     html += '<div class="row" style="margin-top:12px"><button class="btn ghost" id="sh-close">Close</button></div>';
     openSheet(html); $('sh-close').addEventListener('click', closeSheet);
   }
+  function openSaved(){
+    const D = CO.summarize(S.reports, S.results, S.rates, '0000-00-00', '9999-99-99').days.reverse();
+    let html = '<h2>Saved days</h2><p>'+(D.length ? D.length+' day'+(D.length > 1 ? 's' : '')+' saved on this phone, newest first. Tap a day to open it.' : 'No days saved yet. A day appears here as soon as a report is pasted.')+'</p>';
+    if (D.length) html += '<div class="tablewrap"><table><tr><th>Day</th><th>Reports</th><th>Collected</th><th>Won</th></tr>'
+      + D.map(d => '<tr class="tap" data-date="'+d.date+'"><td>'+CO.fmtDate(d.date)+'</td><td>'+d.reports+'</td><td>'+CO.fmt(d.col)+'</td><td>'+CO.fmt(d.won)+'</td></tr>').join('')+'</table></div>';
+    html += '<div class="row" style="margin-top:12px"><button class="btn ghost" id="sh-close">Close</button></div>';
+    openSheet(html); $('sh-close').addEventListener('click', closeSheet);
+    $('sheet-in').querySelectorAll('tr[data-date]').forEach(tr => tr.addEventListener('click', () => { S.sel = tr.dataset.date; save(); closeSheet(); show('day'); }));
+  }
+  $('btn-saved').addEventListener('click', openSaved);
+  $('btn-saved2').addEventListener('click', openSaved);
+  function keep(){ try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch(e){} }
   function openResult(date, key){
     const cur = resFor(date, key) || {n:0, gold:false, red:false};
     const st = {n:cur.n, gold:cur.gold, red:cur.red};
@@ -580,7 +597,7 @@ const CO = (() => {
       if (!S.sel || reports.length === 1) S.sel = r.date;
     }
     for (const e of errors) out.push('<div class="oc err">'+esc(e)+'</div>');
-    if (reports.length) save();
+    if (reports.length){ save(); keep(); }
     $('outcome').innerHTML = out.join('') || '<div class="oc warn">Nothing to import.</div>';
     if (reports.length){ toast(reports.length+' report'+(reports.length>1?'s':'')+' imported'); $('paste').value = ''; }
   }
