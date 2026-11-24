@@ -225,7 +225,7 @@ pre.msg{white-space:pre-wrap;word-break:break-word;background:var(--surface2);bo
     <div class="tablewrap" id="month-days"></div>
     </div>
     <div id="one-wrap" hidden></div>
-    <p class="note" id="week-note" hidden>The week is Monday to Saturday. Sunday is not counted in the week.</p>
+    <p class="note" id="week-note" hidden>The week is Saturday to Friday. Pay is 10% of what the operator collected.</p>
     <p class="note">Collected is what the operators took in. Won is what the drawn results pay on those plays. Diff (difference) is collected minus won.</p>
   </section>
 
@@ -367,8 +367,11 @@ const CO = (() => {
     for (const h of w.hits) L.push('#'+h.p.n+' '+h.p.b+(h.p.m ? '/'+h.p.m : '')+(h.p.s ? '/'+h.p.s : '')+' → $'+fmt(h.w.total));
     return L.join('\n');
   }
-  function weekStart(dateStr){ const [y,mo,da] = dateStr.split('-').map(Number); const back = (new Date(y, mo-1, da).getDay() + 6) % 7; return dateKey(new Date(y, mo-1, da-back)); }
-  function weekEnd(start){ return shiftDate(start, 5); }
+  function weekStart(dateStr){ const [y,mo,da] = dateStr.split('-').map(Number); const back = (new Date(y, mo-1, da).getDay() + 1) % 7; return dateKey(new Date(y, mo-1, da-back)); }
+  function weekEnd(start){ return shiftDate(start, 6); }
+  const PAY = 0.10;
+  const payOf = col => Math.round(col * PAY * 100) / 100;
+  const fmtPay = n => Number.isInteger(n) ? fmt(n) : n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
   function fmtRange(a, b){ const [y,mo,da] = a.split('-').map(Number); const d = new Date(y, mo-1, da); return DAYS[d.getDay()]+' '+da+' '+MONTHS[mo-1]+' – '+fmtDate(b); }
   function summarize(reports, results, rates, from, to){
     const ops = new Map(), days = new Map(), open = new Set();
@@ -412,6 +415,7 @@ const CO = (() => {
     }
     if (!oneDay){ for (const [date, d] of days) L.push(fmtDate(date)+': collected $'+fmt(d.col)+' · won $'+fmt(d.won)); L.push(''); }
     L.push('Collected: $'+fmt(col)); L.push('Won: $'+fmt(won)); L.push('Difference: '+money(col - won));
+    if (!oneDay) L.push('Pay (10% of sales): $'+fmtPay(payOf(col)));
     if (open) L.push(open+' draw'+(open > 1 ? 's have' : ' has')+' no result yet.');
     return L.join('\n');
   }
@@ -449,7 +453,7 @@ const CO = (() => {
     'CASH POT · 8:30 AM · '+fmtDate(date), 'Operator: Keisha (example)', '', 'PLAYS',
     '7: 50 · Mega 20','9: 100','13: 100 · Mega 50 · Monsta 50','25: 20','36: 100 · Mega 100 · Monsta 100','', 'Plays: 5','TOTAL: $690'
   ].join('\n');
-  return {DRAWS, RATE, dateKey, byKey, shiftDate, fmtDate, fmtMonth, shiftMonth, fmt, pad, parseReports, reportId, totals, byNumber, playWin, winners, resultText, weekStart, weekEnd, fmtRange, summarize, opMessage, opList, opDetail, money, toCSV, EXAMPLE};
+  return {DRAWS, RATE, dateKey, byKey, shiftDate, fmtDate, fmtMonth, shiftMonth, fmt, pad, parseReports, reportId, totals, byNumber, playWin, winners, resultText, weekStart, weekEnd, payOf, fmtPay, fmtRange, summarize, opMessage, opList, opDetail, money, toCSV, EXAMPLE};
 })();
 </script>
 
@@ -640,6 +644,7 @@ const CO = (() => {
     $('tot-pending').hidden = !d.pending;
     $('tot-pending').innerHTML = '<span>'+d.pending+' draw'+(d.pending>1?'s have':' has')+' no result yet, so Won is not final.</span>';
     let html = '<div class="daytot"><div><small>Plays</small><b>'+t.plays+'</b></div><div><small>Collected</small><b>$'+CO.fmt(t.col)+'</b></div><div><small>Won</small><b>$'+CO.fmt(t.won)+'</b></div><div><small>Diff</small><b>'+CO.money(t.col-t.won)+'</b></div></div>';
+    if (d.draws.length) html += '<div class="daytot" style="grid-template-columns:1fr"><div><small>Pay · 10% of collected</small><b>$'+CO.fmtPay(CO.payOf(t.col))+'</b></div></div>';
     if (!d.draws.length){
       html += '<div class="empty">No reports from '+esc(name)+(p === 'day' ? ' on this day.' : p === 'week' ? ' in this week.' : ' in this month.')+'</div>';
     } else if (p === 'day'){
@@ -687,9 +692,9 @@ const CO = (() => {
     $('tot-pending').hidden = !sm.pending;
     $('tot-pending').innerHTML = '<span>'+sm.pending+' draw'+(sm.pending>1?'s have':' has')+' no result yet, so Won is not final.</span>';
     const none = p === 'day' ? 'No reports on this day.' : p === 'week' ? 'No reports in this week.' : 'No reports in this month.';
-    $('month-ops').innerHTML = O.length ? '<table><tr><th>Operator</th><th>Plays</th><th>Collected</th><th>Won</th><th>Diff</th></tr>'
-      + O.map(o => '<tr class="tap" data-op="'+esc(o.key)+'"><td>'+esc(o.op)+'</td><td>'+o.plays+'</td><td>'+CO.fmt(o.col)+'</td><td>'+CO.fmt(o.won)+'</td><td>'+CO.fmt(o.col-o.won)+'</td></tr>').join('')
-      + '<tr class="tot"><td>All</td><td>'+tot.plays+'</td><td>'+CO.fmt(tot.col)+'</td><td>'+CO.fmt(tot.won)+'</td><td>'+CO.fmt(tot.col-tot.won)+'</td></tr></table>' : '<div class="empty">'+none+'</div>';
+    $('month-ops').innerHTML = O.length ? '<table><tr><th>Operator</th><th>Plays</th><th>Collected</th><th>Won</th><th>Diff</th><th>Pay</th></tr>'
+      + O.map(o => '<tr class="tap" data-op="'+esc(o.key)+'"><td>'+esc(o.op)+'</td><td>'+o.plays+'</td><td>'+CO.fmt(o.col)+'</td><td>'+CO.fmt(o.won)+'</td><td>'+CO.fmt(o.col-o.won)+'</td><td>'+CO.fmtPay(CO.payOf(o.col))+'</td></tr>').join('')
+      + '<tr class="tot"><td>All</td><td>'+tot.plays+'</td><td>'+CO.fmt(tot.col)+'</td><td>'+CO.fmt(tot.won)+'</td><td>'+CO.fmt(tot.col-tot.won)+'</td><td>'+CO.fmtPay(O.reduce((a,o) => a + CO.payOf(o.col), 0))+'</td></tr></table>' : '<div class="empty">'+none+'</div>';
     $('op-hint').hidden = !O.length;
     $('days-h').hidden = $('month-days').hidden = p === 'day';
     $('month-days').innerHTML = D.length ? '<table><tr><th>Day</th><th>Reports</th><th>Collected</th><th>Won</th><th>Difference</th></tr>'
